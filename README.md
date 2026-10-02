@@ -9,9 +9,8 @@
 [![Rust](https://img.shields.io/badge/rust-1.75%2B-orange?logo=rust&logoColor=white)](https://www.rust-lang.org/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Platform](https://img.shields.io/badge/platform-linux%20%7C%20macos-lightgrey)](#installation)
-[![Discord](https://img.shields.io/badge/Discord-Arab%20FOSS-5865F2?logo=discord&logoColor=white)](https://discord.gg/cXTG5Z72yT)
 
-[Features](#-features) · [Installation](#-installation) · [Usage](#-usage) · [Keybindings](#%EF%B8%8F-keybindings) · [Configuration](#%EF%B8%8F-configuration) · [Community](#-community)
+[Features](#-features) · [Installation](#-installation) · [Usage](#-usage) · [Keybindings](#%EF%B8%8F-keybindings) · [Configuration](#%EF%B8%8F-configuration)
 
 </div>
 
@@ -42,7 +41,7 @@
 
 ## ✨ Features
 
-**anvil** is a fully self-contained modal editor, built entirely from scratch in Rust. Single binary — no runtime, no plugins, no dependencies to install.
+**Anvil** is a fully self-contained modal editor, built entirely from scratch in Rust. Single binary — no runtime, no plugins, no dependencies to install.
 
 | | Feature |
 |---|---|
@@ -63,14 +62,14 @@
 
 ## 🧠 The Idea
 
-Most terminal editors are either **too minimal** (nano) or **too complex** (Vim from scratch). **anvil** sits in the sweet spot:
+Most terminal editors are either **too minimal** (nano) or **too complex** (Vim from scratch). **Anvil** sits in the sweet spot:
 
 - **Modal editing** — the ergonomic idea that makes editing feel natural
 - **Modern UX** — tree, finder, theme picker, mouse support, all built in
 - **Zero config** to start — but fully customizable when you want
 - **Single binary** — one file, drop it anywhere, run it
 
-### Why the name "anvil"?
+### Why the name "Anvil"?
 
 A blacksmith's anvil is a solid, dependable tool you shape things on. Simple. Reliable. No noise.
 
@@ -80,7 +79,7 @@ A blacksmith's anvil is a solid, dependable tool you shape things on. Simple. Re
 
 ### Step 1 — Install Rust
 
-anvil is written in Rust, so you need the Rust toolchain first.
+Anvil is written in Rust, so you need the Rust toolchain first.
 
 **Linux / macOS / WSL:**
 
@@ -141,7 +140,7 @@ which anvil
 anvil
 ```
 
-You should see the **anvil dashboard** with the logo and menu.
+You should see the **Anvil dashboard** with the logo and menu.
 
 ### Quick test
 
@@ -181,7 +180,7 @@ Run `anvil` with no arguments and you'll see the **dashboard** — a menu of qui
 
 ### Modal editing
 
-anvil uses **modes** to keep your hands on the keyboard:
+Anvil uses **modes** to keep your hands on the keyboard:
 
 | Mode | What it does |
 |------|--------------|
@@ -281,7 +280,7 @@ Press **`Space`** in NORMAL mode to open the **leader menu** — a floating pane
 
 ## ⚙️ Configuration
 
-anvil stores its config at `~/.config/anvil/config.ini`. It's created automatically on first run and **hot-reloaded** within 500ms of editing.
+Anvil stores its config at `~/.config/anvil/config.ini`. It's created automatically on first run and **hot-reloaded** within 500ms of editing.
 
 ```ini
 ; ─── general ─────────────────────────────────────
@@ -387,20 +386,6 @@ Contributions are welcome! Whether it's a bug fix, a new feature, or a theme:
 
 ---
 
-## 💬 Community
-
-Join the **Arab FOSS** Discord — a community for Arabic open-source developers:
-
-<div align="center">
-
-### 👉 [discord.gg/cXTG5Z72yT](https://discord.gg/cXTG5Z72yT) 👈
-
-*Ask questions, share your setup, suggest features, or just hang out.*
-
-</div>
-
----
-
 ## 📜 License
 
 MIT — see [LICENSE](LICENSE) for details.
@@ -411,6 +396,6 @@ MIT — see [LICENSE](LICENSE) for details.
 
 **Made with ❤️ in Rust · by [255m](https://github.com/255m)**
 
-If you like anvil, consider giving it a ⭐ on GitHub!
+If you like Anvil, consider giving it a ⭐ on GitHub!
 
 </div>
