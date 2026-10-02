@@ -4,7 +4,7 @@
 
 **A lightweight, fast, and beautiful modal text editor for the terminal.**
 
-*Built in Rust · Inspired by Neovim · Designed for humans.*
+*Written from scratch in Rust · Not a Vim/Neovim wrapper · Not based on LazyVim*
 
 [![Rust](https://img.shields.io/badge/rust-1.75%2B-orange?logo=rust&logoColor=white)](https://www.rust-lang.org/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
@@ -42,7 +42,7 @@
 
 ## ✨ Features
 
-**anvil** is a modal editor that feels like Neovim but looks and behaves like a modern IDE — all inside your terminal.
+**anvil** is a fully self-contained modal editor, built entirely from scratch in Rust. It borrows the *modal editing idea* from the Vim family, but it's **not** a wrapper around Vim, Neovim, or any other editor — there is no Lua, no VimScript, no plugin ecosystem to install. Just a single binary.
 
 | | Feature |
 |---|---|
@@ -55,7 +55,7 @@
 | 🎯 | **Smart completion** — inline autocomplete across all languages |
 | 🌍 | **Unicode & Arabic support** — works with RTL and multi-byte characters |
 | 🖱️ | **Full mouse support** — click, drag, scroll, right-click everywhere |
-| ⚡ | **Blazing fast** — Rust + Ratatui, renders at 60fps with low CPU |
+| ⚡ | **Blazing fast** — pure Rust + Ratatui, renders at 60fps with low CPU |
 | 🎵 | **Now Playing** — shows your current music track in the status bar |
 | 🎛️ | **Hot config reload** — edit `config.ini`, changes apply instantly |
 
@@ -65,12 +65,23 @@
 
 Most terminal editors are either **too minimal** (nano) or **too complex** (Vim from scratch). **anvil** sits in the sweet spot:
 
-- **Modal editing** like Vim — muscle memory that never leaves you
-- **Modern UX** like VSCode — tree, finder, theme picker, mouse support
+- **Modal editing** — the ergonomic idea borrowed from Vim, nothing else
+- **Modern UX** — tree, finder, theme picker, mouse support, all built in
 - **Zero config** to start — but fully customizable when you want
-- **Single binary** — no runtime, no Node, no Python
+- **Single binary** — no runtime, no plugins, no Lua, no Node, no Python
 
-The name comes from a blacksmith's anvil: a solid, reliable tool you shape things on.
+### What anvil is **not**
+
+- ❌ **Not Neovim** — it does not use Neovim under the hood, and it never calls `nvim`
+- ❌ **Not LazyVim** — not a Neovim distribution, not a config for Neovim
+- ❌ **Not a Vim plugin** — not written in VimScript or Lua
+- ❌ **Not a fork** — the codebase is 100% original
+
+It's a standalone project that happens to share the *modal editing* concept with the Vim family — the same way many editors share "Ctrl+S to save".
+
+### Why the name "anvil"?
+
+A blacksmith's anvil is a solid, dependable tool you shape things on. Simple. Reliable. No noise.
 
 ---
 
@@ -104,7 +115,7 @@ cargo --version
 ### Step 2 — Clone the repository
 
 ```bash
-git clone https://github.com/your-username/anvil.git
+git clone https://github.com/255m/anvil.git
 cd anvil
 ```
 
@@ -179,7 +190,7 @@ Run `anvil` with no arguments and you'll see the **dashboard** — a menu of qui
 
 ### Modal editing
 
-anvil uses **modes**, like Vim:
+anvil uses **modes** (the same ergonomic idea as Vim):
 
 | Mode | What it does |
 |------|--------------|
@@ -354,6 +365,19 @@ anvil/
 
 ---
 
+## 🛠️ Built With
+
+- **[Rust](https://www.rust-lang.org/)** — the whole thing, from scratch
+- **[Ratatui](https://ratatui.rs/)** — terminal UI rendering
+- **[Crossterm](https://github.com/crossterm-rs/crossterm)** — terminal events and raw mode
+- **[portable-pty](https://github.com/wez/wezterm/tree/main/pty)** — real PTY for embedded terminals
+- **[vte](https://github.com/alacritty/vte)** — ANSI escape parser
+- **[ignore](https://github.com/BurntSushi/ripgrep/tree/master/crates/ignore)** — fast file walking
+
+No Neovim. No LazyVim. No Vim runtime. Just Rust.
+
+---
+
 ## 🤝 Contributing
 
 Contributions are welcome! Whether it's a bug fix, a new feature, or a theme:
@@ -396,7 +420,7 @@ MIT — see [LICENSE](LICENSE) for details.
 
 <div align="center">
 
-**Made with ❤️ in Rust**
+**Made with ❤️ in Rust · by [255m](https://github.com/255m)**
 
 If you like anvil, consider giving it a ⭐ on GitHub!
 
