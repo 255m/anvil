@@ -1,6 +1,6 @@
 <div align="center">
 
-# ⚡ anvil
+# Anvil - The Editor
 
 **A lightweight, fast, and beautiful modal text editor for the terminal.**
 
