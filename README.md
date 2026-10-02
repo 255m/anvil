@@ -4,7 +4,7 @@
 
 **A lightweight, fast, and beautiful modal text editor for the terminal.**
 
-*Written from scratch in Rust · Not a Vim/Neovim wrapper · Not based on LazyVim*
+*Written from scratch in Rust · Have fun*
 
 [![Rust](https://img.shields.io/badge/rust-1.75%2B-orange?logo=rust&logoColor=white)](https://www.rust-lang.org/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
