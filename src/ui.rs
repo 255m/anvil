@@ -221,6 +221,7 @@ pub fn draw(f: &mut Frame, app: &mut App) {
     if app.show_help { draw_help(f, app, size); }
     if app.input_kind != InputKind::None { draw_input_popup(f, app, size); }
     if app.confirm_delete.is_some() { draw_confirm(f, app, size); }
+    if app.mode == Mode::Command { draw_command_popup(f, app, size); }
 }
 
 // ---------------- TERMINAL ----------------
@@ -665,10 +666,7 @@ fn draw_status(f: &mut Frame, app: &App, area: Rect) {
 fn draw_cmdline(f: &mut Frame, app: &App, area: Rect) {
     let theme = &app.theme;
     let (text, style) = match app.mode {
-        Mode::Command => (
-            format!("{}{}", app.command_prefix, app.command),
-            Style::default().fg(theme.fg).bg(theme.bg),
-        ),
+        Mode::Command => (String::new(), Style::default().bg(theme.bg)),
         _ => {
             let cursor_line = app.buf_ref().cursor.0;
             let err_msg = app.diagnostics.iter()
@@ -1090,6 +1088,60 @@ fn draw_input_popup(f: &mut Frame, app: &App, size: Rect) {
     let cx = inner.x + 3 + app.input_text.chars().count() as u16;
     let cy = inner.y;
     f.set_cursor_position((cx, cy));
+}
+
+// ---------------- COMMAND / SEARCH POPUP ----------------
+/// Floating, centered box for `:` (command) and `/` (search).
+fn draw_command_popup(f: &mut Frame, app: &App, size: Rect) {
+    let theme = &app.theme;
+    let is_search = app.command_prefix == '/';
+    let (title, icon) = if is_search {
+        (" Search ", "\u{f002}")   // nf-fa-search
+    } else {
+        (" Command ", "\u{f120}")  // nf-fa-terminal
+    };
+
+    let w = (size.width / 2).clamp(40, 70).min(size.width.saturating_sub(2));
+    let h = 3u16;
+    if w < 10 || size.height < h { return; }
+    let popup = Rect {
+        x: size.x + (size.width - w) / 2,
+        y: size.y + (size.height - h) / 2,
+        width: w,
+        height: h,
+    };
+    f.render_widget(Clear, popup);
+
+    let block = Block::default()
+        .borders(Borders::ALL)
+        .border_type(BorderType::Rounded)
+        .border_style(Style::default().fg(theme.accent))
+        .title(Span::styled(title,
+            Style::default().fg(theme.accent).add_modifier(Modifier::BOLD)))
+        .title_alignment(Alignment::Center)
+        .style(Style::default().bg(theme.bg));
+    let inner = block.inner(popup);
+    f.render_widget(block, popup);
+
+    // Prompt: " <icon>  " then the text. Keep the tail visible if it's too long.
+    let prompt_w = 4u16; // space + icon + 2 spaces
+    let avail = inner.width.saturating_sub(prompt_w + 1) as usize;
+    let chars: Vec<char> = app.command.chars().collect();
+    let shown: String = if chars.len() > avail {
+        chars[chars.len() - avail..].iter().collect()
+    } else {
+        app.command.clone()
+    };
+
+    let line = Line::from(vec![
+        Span::styled(format!(" {}  ", icon),
+            Style::default().fg(theme.accent).add_modifier(Modifier::BOLD)),
+        Span::styled(shown.clone(), Style::default().fg(theme.fg)),
+    ]);
+    f.render_widget(Paragraph::new(line), inner);
+
+    let cx = inner.x + prompt_w + shown.chars().count() as u16;
+    f.set_cursor_position((cx, inner.y));
 }
 
 // ---------------- CONFIRM DELETE ----------------
