@@ -375,45 +375,29 @@ impl App {
             return;
         };
         let _ = self.buf().save();
+        // absolute, so `cd <dir>` and project lookups work from any terminal cwd
+        let path = std::fs::canonicalize(&path).unwrap_or(path);
 
-        let lang = syntax::detect(&path.to_string_lossy());
-
-        let cmd = match lang {
-            Language::Python => format!("python3 '{}'", path.display()),
-            Language::JavaScript => format!("node '{}'", path.display()),
-            Language::TypeScript => format!("npx ts-node '{}'", path.display()),
-            Language::Go => format!("go run '{}'", path.display()),
-            Language::Shell => format!("bash '{}'", path.display()),
-            Language::Ruby => format!("ruby '{}'", path.display()),
-            Language::Php => format!("php '{}'", path.display()),
-            Language::Lua => format!("lua '{}'", path.display()),
-            Language::C => {
-                let out = "/tmp/anvil_c_out";
-                format!("gcc '{}' -o {} && {}", path.display(), out, out)
-            }
-            Language::Cpp => {
-                let out = "/tmp/anvil_cpp_out";
-                format!("g++ '{}' -o {} && {}", path.display(), out, out)
-            }
-            Language::Rust => {
-                let out = "/tmp/anvil_rs_out";
-                format!("rustc '{}' -o {} && {}", path.display(), out, out)
-            }
-            Language::Java => {
-                let dir = path.parent().unwrap_or(&path);
-                let name = path.file_stem().unwrap_or_default().to_string_lossy();
-                format!(
-                    "cd '{}' && javac '{}' && java {}",
-                    dir.display(), path.display(), name
-                )
-            }
-            Language::Nim => format!("nim c -r '{}'", path.display()),
-            Language::Zig => format!("zig run '{}'", path.display()),
-            _ => {
-                self.message = format!("can't run {}", lang.name());
-                return;
-            }
+        let first = self.buf_ref().line(0).to_string();
+        let planned = {
+            let exists = |p: &std::path::Path| p.exists();
+            let env = crate::runner::Env {
+                have: &crate::runner::on_path,
+                exists: &exists,
+                tmp: crate::runner::scratch_path(),
+                shebang: if first.starts_with("#!") { Some(first) } else { None },
+                custom: &self.config.run_cmds,
+            };
+            crate::runner::plan(&path, &env)
         };
+        let planned = match planned {
+            Ok(p) => p,
+            Err(msg) => { self.message = msg; return; }
+        };
+        if planned.needs_scratch {
+            if let Err(e) = crate::runner::make_scratch() { self.message = e; return; }
+        }
+        let cmd = planned.cmd;
 
         let h = self.config.term_bottom_height;
         self.ensure_bottom_term(h, 100);
@@ -422,9 +406,13 @@ impl App {
             t.send_str(&format!("{}\n", cmd));
         }
         self.active_pane = Pane::BottomTerm;
-        self.message = format!("running {}", path.file_name()
+        let shown = path.file_name()
             .map(|n| n.to_string_lossy().to_string())
-            .unwrap_or_else(|| path.display().to_string()));
+            .unwrap_or_else(|| path.display().to_string());
+        self.message = match planned.note {
+            Some(n) => format!("running {} ({})", shown, n),
+            None => format!("running {}", shown),
+        };
     }
 
     fn install_buffer(&mut self, b: Buffer) {
