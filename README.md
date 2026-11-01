@@ -241,8 +241,27 @@ Press **`Space`** in NORMAL mode to open the **leader menu** — a floating pane
 | `dw` `yw` | Delete / yank word |
 | `p` `P` | Paste after / before |
 | `u` / `Ctrl+r` | Undo / Redo |
-| `>` `<` | Indent / outdent |
+| `>>` `<<` | Indent / outdent line (`3>>`, `>ip`, `>}` ...) |
 | `v` `V` | Visual / visual line mode |
+
+### Multi-key commands (with which-key hints)
+
+Press the first key and pause for a moment: a popup in the bottom-left lists
+what can come next. Every key it shows works.
+
+| Keys | Action |
+|------|--------|
+| `d` `y` `c` `>` `<` `gu` `gU` `g~` + target | Operators. Targets: `w b e 0 ^ $ h l j k gg G { } %`, `f t F T` + char, doubled key for the whole line (`dd`, `>>`, `guu`) |
+| `i` / `a` + object | Text objects: `w` `p` `"` `'` `` ` `` `(` `)` `b` `[` `]` `{` `}` `B` `<` `>` (`diw`, `ci"`, `da(`, `yip`) |
+| `f` `t` `F` `T` + char | Jump to / before a character on the line |
+| `r` + char | Replace the character under the cursor (`3rx`) |
+| `m{a-z}` `'{a-z}` `` `{a-z} `` | Set mark / jump to mark line / jump to exact position |
+| `gg` `ge` `gi` | First line / previous word end / resume insert where you left it |
+| `zz` `zt` `zb` | Center / top / bottom the cursor line |
+| `ZZ` `ZQ` | Save and close tab / close without saving |
+| `Ctrl+w` + `h/j/k/l` | Move between panes |
+
+Counts work before or after an operator: `3dd`, `d2w`, `2>>`.
 
 ### Search & Command
 

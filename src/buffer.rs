@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use std::fs;
 use std::path::PathBuf;
 
@@ -17,6 +18,10 @@ pub struct Buffer {
     redo_stack: Vec<Snapshot>,
     pub scroll: u16,
     pub visual_anchor: Option<(usize, usize)>,
+    /// Named marks (`m{a-z}`), as (line, col).
+    pub marks: HashMap<char, (usize, usize)>,
+    /// Where Insert mode was last left (`gi`).
+    pub last_insert: Option<(usize, usize)>,
 }
 
 impl Buffer {
@@ -26,6 +31,7 @@ impl Buffer {
             path: None, cursor: (0, 0), preferred_col: 0, modified: false,
             undo_stack: Vec::new(), redo_stack: Vec::new(),
             scroll: 0, visual_anchor: None,
+            marks: HashMap::new(), last_insert: None,
         }
     }
 
@@ -40,6 +46,7 @@ impl Buffer {
             lines, path: Some(path), cursor: (0, 0), preferred_col: 0,
             modified: false, undo_stack: Vec::new(), redo_stack: Vec::new(),
             scroll: 0, visual_anchor: None,
+            marks: HashMap::new(), last_insert: None,
         })
     }
 
@@ -66,7 +73,7 @@ impl Buffer {
         s.char_indices().nth(col).map(|(i, _)| i).unwrap_or(s.len())
     }
 
-    fn snapshot(&mut self) {
+    pub fn snapshot(&mut self) {
         self.undo_stack.push(Snapshot { lines: self.lines.clone(), cursor: self.cursor });
         if self.undo_stack.len() > 2000 { self.undo_stack.remove(0); }
         self.redo_stack.clear();
