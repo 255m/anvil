@@ -170,6 +170,7 @@ sudo make uninstall
 
 Run `anvil` with no arguments and you'll see the **dashboard** — a menu of quick actions:
 
+- `1`–`5` → reopen one of your most recent files (remembered in `~/.config/anvil/recent`)
 - `n` → new file
 - `f` → find file
 - `g` → live grep

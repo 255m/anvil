@@ -4,6 +4,7 @@ mod app;
 mod buffer;
 mod config;
 mod finder;
+mod recent;
 mod syntax;
 mod terminal;
 mod tree;
