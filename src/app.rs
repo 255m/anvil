@@ -77,6 +77,8 @@ pub struct App {
     pub completion_index: usize,
     pub completion_prefix: String,
     pub dashboard_dismissed: bool,
+    /// Recently opened files, newest first (shown on the dashboard).
+    pub recent: Vec<PathBuf>,
     pub clipboard_request: Option<String>,
 
     pub side_term: Option<Terminal>,
@@ -140,6 +142,13 @@ impl App {
         tree.width = config.tree_width;
 
         let has_file = file.is_some();
+        let mut recent = crate::recent::load();
+        if let Some(f) = &file {
+            if let Some(c) = crate::recent::canonical(std::path::Path::new(f)) {
+                crate::recent::push(&mut recent, c);
+                crate::recent::save(&recent);
+            }
+        }
         let mut startup_dir: Option<PathBuf> = None;
 
         let buffers = if let Some(f) = file {
@@ -219,6 +228,7 @@ impl App {
             completion_index: 0,
             completion_prefix: String::new(),
             dashboard_dismissed: has_file,
+            recent,
             clipboard_request: None,
             side_term: None,
             bottom_term: None,
@@ -427,7 +437,21 @@ impl App {
             .unwrap_or_else(|| path.display().to_string()));
     }
 
+    /// Remember `path` as the most recently used file.
+    fn note_recent(&mut self, path: &std::path::Path) {
+        if let Some(c) = crate::recent::canonical(path) {
+            crate::recent::push(&mut self.recent, c);
+            crate::recent::save(&self.recent);
+        }
+    }
+
+    /// Up to 5 recent files that still exist, for the dashboard.
+    pub fn dashboard_recent(&self) -> Vec<&PathBuf> {
+        self.recent.iter().filter(|p| p.exists()).take(5).collect()
+    }
+
     fn install_buffer(&mut self, b: Buffer) {
+        if let Some(p) = b.path.clone() { self.note_recent(&p); }
         if let Some(p) = &b.path {
             if let Some(parent) = p.parent() {
                 if !parent.as_os_str().is_empty() {
@@ -833,7 +857,7 @@ impl App {
                         let abs = if p.is_absolute() { p }
                             else { std::env::current_dir().unwrap_or_else(|_| PathBuf::from(".")).join(p) };
                         match self.buf().save_as(abs.clone()) {
-                            Ok(_) => { self.tree.refresh(); self.message = format!("written: {}", abs.display()); }
+                            Ok(_) => { self.tree.refresh(); self.note_recent(&abs); self.message = format!("written: {}", abs.display()); }
                             Err(e) => self.message = format!("error: {}", e),
                         }
                     }
@@ -866,6 +890,13 @@ impl App {
             't' => { self.open_theme_picker(); true }
             'h' => { self.show_help = true; true }
             'q' => { self.should_quit = true; true }
+            '1'..='5' => {
+                let i = c as usize - '1' as usize;
+                match self.dashboard_recent().get(i).map(|p| (*p).clone()) {
+                    Some(p) => { self.open_file(p); true }
+                    None => false,
+                }
+            }
             _ => false,
         }
     }
@@ -1575,8 +1606,8 @@ impl App {
             _ => {
                 if let Some(rest) = cmd.strip_prefix("w ") {
                     let p = PathBuf::from(rest.trim());
-                    match self.buf().save_as(p) {
-                        Ok(_) => self.message = "written".into(),
+                    match self.buf().save_as(p.clone()) {
+                        Ok(_) => { self.note_recent(&p); self.message = "written".into(); }
                         Err(e) => self.message = format!("write error: {}", e),
                     }
                 } else if let Some(rest) = cmd.strip_prefix("e ") {
@@ -1798,6 +1829,7 @@ impl App {
                 self.current = i;
                 self.dashboard_dismissed = true;
                 self.active_pane = Pane::Editor;
+                self.note_recent(&path);
                 return;
             }
         }

@@ -694,7 +694,9 @@ fn draw_dashboard(f: &mut Frame, app: &App, area: Rect) {
     let tagline = &app.config.tagline;
 
     let rows = (app.config.menu.len() + 1) / 2;
-    let content_h = logo.len() + 6 + rows + 3;
+    let recent = app.dashboard_recent();
+    let recent_h = if recent.is_empty() { 0 } else { recent.len() + 2 };
+    let content_h = logo.len() + 6 + rows + 3 + recent_h;
     let mut lines: Vec<Line> = Vec::new();
     let h = area.height as usize;
     let pad_top = if h > content_h { (h - content_h) / 2 } else { 0 };
@@ -728,6 +730,17 @@ fn draw_dashboard(f: &mut Frame, app: &App, area: Rect) {
         lines.push(Line::from(spans));
     }
 
+    if !recent.is_empty() {
+        lines.push(Line::raw(""));
+        lines.push(Line::from(Span::styled("Recent files",
+            Style::default().fg(theme.dim).add_modifier(Modifier::ITALIC))));
+        // keep the folder column from pushing the row past a narrow window
+        let dir_w = (area.width as usize).saturating_sub(34).min(26);
+        for (i, path) in recent.iter().enumerate() {
+            lines.push(recent_line(i + 1, path, dir_w, theme));
+        }
+    }
+
     lines.push(Line::raw(""));
     lines.push(Line::from(vec![
         Span::styled("\u{f017} ", Style::default().fg(theme.dim)),
@@ -747,6 +760,51 @@ fn draw_dashboard(f: &mut Frame, app: &App, area: Rect) {
         .alignment(Alignment::Center)
         .style(Style::default().bg(theme.bg));
     f.render_widget(p, area);
+}
+
+/// Shorten `s` to `w` chars, keeping the start (adds `…`).
+fn trunc_end(s: &str, w: usize) -> String {
+    let n = s.chars().count();
+    if n <= w { return s.to_string(); }
+    if w == 0 { return String::new(); }
+    let mut t: String = s.chars().take(w - 1).collect();
+    t.push('\u{2026}');
+    t
+}
+
+/// Shorten `s` to `w` chars, keeping the end (adds `…`): best for paths.
+fn trunc_start(s: &str, w: usize) -> String {
+    let n = s.chars().count();
+    if n <= w { return s.to_string(); }
+    if w == 0 { return String::new(); }
+    let mut t = String::from('\u{2026}');
+    t.extend(s.chars().skip(n - (w - 1)));
+    t
+}
+
+/// One dashboard row: ` 1  icon  name        ~/folder`
+fn recent_line<'a>(n: usize, path: &std::path::Path, dir_w: usize, theme: &Theme) -> Line<'a> {
+    const NAME_W: usize = 20;
+    let name = path.file_name().map(|s| s.to_string_lossy().to_string()).unwrap_or_default();
+    let mut dir = path.parent().map(|d| d.to_string_lossy().to_string()).unwrap_or_default();
+    if let Ok(home) = std::env::var("HOME") {
+        if !home.is_empty() && dir.starts_with(&home) { dir = format!("~{}", &dir[home.len()..]); }
+    }
+    let icon = crate::tree::icon_for(&name, false, false);
+    let mut spans = vec![
+        Span::styled(format!(" {} ", n),
+            Style::default().fg(theme.bg).bg(theme.accent).add_modifier(Modifier::BOLD)),
+        Span::raw(" "),
+        Span::styled(format!("{} ", icon),
+            Style::default().fg(theme.tree_dir).add_modifier(Modifier::BOLD)),
+        Span::styled(format!("{:<w$}", trunc_end(&name, NAME_W), w = NAME_W),
+            Style::default().fg(theme.fg)),
+    ];
+    if dir_w > 0 {
+        spans.push(Span::styled(format!("  {:<w$}", trunc_start(&dir, dir_w), w = dir_w),
+            Style::default().fg(theme.dim)));
+    }
+    Line::from(spans)
 }
 
 fn menu_cell<'a>(
