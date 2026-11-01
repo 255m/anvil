@@ -381,6 +381,8 @@ pub struct Config {
     pub term_side_width: u16,
     pub term_bottom_height: u16,
     pub keybinds: Vec<KeyBind>,
+    /// `run.<ext> = <command>` rules for Space+r: (extension, template).
+    pub run_cmds: Vec<(String, String)>,
     pub music_enabled: bool,
     pub path: PathBuf,
 }
@@ -401,6 +403,7 @@ impl Default for Config {
             term_side_width: 44,
             term_bottom_height: 12,
             keybinds: default_keybinds(),
+            run_cmds: Vec::new(),
             music_enabled: true,
             path: default_path(),
         }
@@ -521,6 +524,14 @@ impl Config {
         for kb in &self.keybinds {
             out.push_str(&format!("key.{} = {}\n", kb.key, kb.action));
         }
+        if !self.run_cmds.is_empty() {
+            out.push('\n');
+            out.push_str("; custom run commands for Space+r (run.<ext> = <command>)\n");
+            out.push_str("; placeholders: {f} file, {dir} folder, {stem} name without extension, {out} build output\n");
+            for (ext, cmd) in &self.run_cmds {
+                out.push_str(&format!("run.{} = {}\n", ext, cmd));
+            }
+        }
         if !self.colors.is_empty() {
             out.push('\n');
             for (k, v) in &self.colors {
@@ -536,6 +547,7 @@ impl Config {
         let mut menu_lines: Vec<MenuItem> = Vec::new();
         let mut colors: HashMap<String, Color> = HashMap::new();
         let mut keybinds: Vec<KeyBind> = Vec::new();
+        let mut run_cmds: Vec<(String, String)> = Vec::new();
 
         for raw in content.lines() {
             let line = raw;
@@ -579,6 +591,10 @@ impl Config {
                         let binding = k.trim_start_matches("key.").to_string();
                         keybinds.push(KeyBind { key: binding, action: val });
                     }
+                    k if k.starts_with("run.") => {
+                        let ext = k.trim_start_matches("run.").trim_start_matches('.').to_lowercase();
+                        if !ext.is_empty() && !val.is_empty() { run_cmds.push((ext, val)); }
+                    }
                     k if k.starts_with("color.") => {
                         let name = k.trim_start_matches("color.").to_string();
                         if let Some(c) = parse_color(&val) { colors.insert(name, c); }
@@ -592,6 +608,7 @@ impl Config {
         if !menu_lines.is_empty() { self.menu = menu_lines; }
         self.colors = colors;
         self.keybinds = keybinds;
+        self.run_cmds = run_cmds;
         self.version = CONFIG_VERSION;
     }
 

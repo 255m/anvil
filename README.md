@@ -325,6 +325,31 @@ menu = t |  | Theme
 menu = q |  | Quit
 ```
 
+### Running files (`Space` `r`)
+
+`Space r` (or `:run`) saves the file and runs it in the bottom terminal.
+Built in: Python, JavaScript, TypeScript, Shell (bash/zsh/fish), PowerShell, Ruby,
+PHP, Lua, Perl, R, Julia, Dart, Elixir, Haskell, Racket, Lisp, Clojure, Groovy,
+Kotlin, Swift, Scala, Awk, Tcl, CoffeeScript, OCaml, F#, Mojo, Nim, Zig, Crystal,
+V, Odin, D, C, C++, Fortran, Java, Go, Rust, HTML (opens the browser), `Makefile`
+and `justfile`.
+
+- The first installed tool wins (`python3`, else `python`; `node`, else `bun`/`deno`).
+- Projects are respected: a Rust file in a Cargo project runs `cargo run`
+  (`src/bin/x.rs` runs `--bin x`, `examples/x.rs` runs `--example x`); a Go file in
+  a module runs `go run .`.
+- Scripts without an extension run through their `#!` line.
+- Compiled languages build into a private temp folder that is removed on exit.
+- Add or override any language in `config.ini`:
+
+```ini
+; placeholders: {f} file, {dir} folder, {stem} name without extension, {out} build output
+run.py   = uv run {f}
+run.zig  = zig run {f}
+run.sql  = sqlite3 :memory: ".read {f}"
+run.tex  = cd {dir} && pdflatex {f}
+```
+
 ### Available themes
 
 `terminal` · `catppuccin` · `gruvbox` · `tokyonight` · `nord` · `everforest` · `dracula` · `one-dark` · `kanagawa` · `monokai` · `ayu` · `solarized` · `rose-pine` · `everblush` · `oxocarbon` · `melange` · `nightfox` · `catppuccin-latte` · `gruvbox-light` · `tokyonight-day` · `rose-pine-dawn` · `one-light` · `everforest-light` · `daylight` · `discord-dark` · `discord-light`

@@ -5,6 +5,7 @@ mod buffer;
 mod config;
 mod finder;
 mod syntax;
+mod runner;
 mod terminal;
 mod tree;
 mod ui;
@@ -72,6 +73,7 @@ fn main() -> io::Result<()> {
         }
     }
 
+    runner::cleanup();
     let mut out = io::stdout();
     let _ = write!(out, "\x1b[?1000l\x1b[?1002l\x1b[?1003l\x1b[?1006l");
     let _ = out.flush();
