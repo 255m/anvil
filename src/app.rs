@@ -15,6 +15,8 @@ use crate::syntax::{self, Language};
 use crate::terminal::{TermKind, Terminal};
 use crate::tree::FileTree;
 
+pub mod vimkeys;
+
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum Mode { Normal, Insert, Visual, VisualLine, Command }
 
@@ -40,9 +42,13 @@ pub struct App {
     pub finder: Finder,
     pub leader: bool,
     pub pending_count: String,
-    pub pending_op: Option<char>,
-    pub pending_g: bool,
-    pub pending_f: Option<char>,
+    /// Keys typed so far in a multi-key command (`d`, `gU`, `ci`, Ctrl+w ...).
+    pub pending_seq: String,
+    /// Count typed before the command (`3dd`) and after the operator (`d3w`).
+    pub seq_count: usize,
+    pub seq_count2: String,
+    /// Which pending sequence the hint popup is waiting on, and since when.
+    pub hint_since: Option<(String, Instant)>,
     pub should_quit: bool,
     pub start_time: Instant,
     pub search: Option<String>,
@@ -192,7 +198,8 @@ impl App {
             tree_history: Vec::new(),
             finder: Finder::new(),
             leader: false, pending_count: String::new(),
-            pending_op: None, pending_g: false, pending_f: None,
+            pending_seq: String::new(), seq_count: 0, seq_count2: String::new(),
+            hint_since: None,
             should_quit: false, start_time: Instant::now(),
             search: None, search_index: 0, search_hits: Vec::new(),
             clipboard: String::new(), registers: HashMap::new(),
@@ -569,20 +576,15 @@ impl App {
 
         if self.try_custom_keybind(&key) { return; }
 
+        // Ctrl+w then h/j/k/l moves between panes (the hint popup lists the options)
+        if self.pending_seq == vimkeys::CTRL_W {
+            self.handle_pending_key(key);
+            return;
+        }
         if key.modifiers.contains(KeyModifiers::CONTROL) {
             if let KeyCode::Char('w') = key.code {
-                self.pending_count = "w".into();
-                return;
-            }
-            if self.pending_count == "w" {
-                self.pending_count.clear();
-                match key.code {
-                    KeyCode::Char('h') | KeyCode::Left => self.move_pane_left(),
-                    KeyCode::Char('l') | KeyCode::Right => self.move_pane_right(),
-                    KeyCode::Char('j') | KeyCode::Down => self.move_pane_down(),
-                    KeyCode::Char('k') | KeyCode::Up => self.move_pane_up(),
-                    _ => {}
-                }
+                self.clear_pending();
+                self.pending_seq.push_str(vimkeys::CTRL_W);
                 return;
             }
         }
@@ -965,6 +967,11 @@ impl App {
     fn handle_normal(&mut self, key: KeyEvent) {
         let ctrl = key.modifiers.contains(KeyModifiers::CONTROL);
 
+        if !self.pending_seq.is_empty() {
+            self.handle_pending_key(key);
+            return;
+        }
+
         if ctrl {
             match key.code {
                 KeyCode::Char('a') => {
@@ -1037,50 +1044,6 @@ impl App {
             }
         }
 
-        if let Some(op) = self.pending_op {
-            self.pending_op = None;
-            if let KeyCode::Char(c) = key.code {
-                self.apply_operator(op, c);
-                self.pending_count.clear();
-                return;
-            }
-        }
-        if self.pending_g {
-            self.pending_g = false;
-            if let KeyCode::Char('g') = key.code {
-                let count = self.take_count();
-                if count > 0 { self.buf().goto_line(count); } else { self.buf().move_file_start(); }
-                self.ensure_visible();
-                return;
-            }
-        }
-        if let Some(prefix) = self.pending_f.take() {
-            if let KeyCode::Char(c) = key.code {
-                match prefix {
-                    'f' => { self.buf().find_char_forward(c); self.last_find = Some((c, true)); }
-                    't' => {
-                        let before = self.buf_ref().cursor;
-                        if self.buf().find_char_forward(c) {
-                            let col = self.buf_ref().cursor.1;
-                            if col > before.1 { self.buf().cursor.1 = col - 1; }
-                        }
-                        self.last_find = Some((c, true));
-                    }
-                    'F' => { self.buf().find_char_backward(c); self.last_find = Some((c, false)); }
-                    'T' => {
-                        let before = self.buf_ref().cursor;
-                        if self.buf().find_char_backward(c) {
-                            let col = self.buf_ref().cursor.1;
-                            if col + 1 < before.1 { self.buf().cursor.1 = col + 1; }
-                        }
-                        self.last_find = Some((c, false));
-                    }
-                    _ => {}
-                }
-            }
-            return;
-        }
-
         match key.code {
             KeyCode::Char('h') | KeyCode::Left => {
                 let n = self.take_count().max(1);
@@ -1120,7 +1083,7 @@ impl App {
             KeyCode::Char('0') => { self.buf().move_line_start(); }
             KeyCode::Char('^') => { self.buf().move_first_non_blank(); }
             KeyCode::Char('$') => { self.buf().move_line_end(); }
-            KeyCode::Char('g') => { self.pending_g = true; }
+            KeyCode::Char('g') => { self.begin_seq('g'); }
             KeyCode::Char('G') => {
                 let n = self.take_count();
                 if n > 0 { self.buf().goto_line(n); } else { self.buf().move_file_end(); }
@@ -1174,9 +1137,9 @@ impl App {
                 let n = self.take_count().max(1);
                 for _ in 0..n { self.buf().delete_char_at(); }
             }
-            KeyCode::Char('d') => { self.pending_op = Some('d'); }
-            KeyCode::Char('y') => { self.pending_op = Some('y'); }
-            KeyCode::Char('c') => { self.pending_op = Some('c'); }
+            KeyCode::Char('d') => { self.begin_seq('d'); }
+            KeyCode::Char('y') => { self.begin_seq('y'); }
+            KeyCode::Char('c') => { self.begin_seq('c'); }
             KeyCode::Char('p') => {
                 let text = self.clipboard.clone();
                 if !text.is_empty() { self.buf().paste(&text, true); }
@@ -1186,8 +1149,12 @@ impl App {
                 if !text.is_empty() { self.buf().paste(&text, false); }
             }
             KeyCode::Char('u') => { self.buf().undo(); }
-            KeyCode::Char('>') => { self.buf().indent_line(); }
-            KeyCode::Char('<') => { self.buf().outdent_line(); }
+            KeyCode::Char('>') => { self.begin_seq('>'); }
+            KeyCode::Char('<') => { self.begin_seq('<'); }
+            // keys that wait for a second key: f t F T r m z Z ' `
+            KeyCode::Char(k @ ('f' | 't' | 'F' | 'T' | 'r' | 'm' | 'z' | 'Z' | '\'' | '`')) => {
+                self.begin_seq(k);
+            }
             KeyCode::Char('v') => {
                 self.mode = Mode::Visual;
                 let c = self.buf_ref().cursor;
@@ -1222,9 +1189,7 @@ impl App {
             KeyCode::BackTab => { self.prev_tab(); }
             KeyCode::Esc => {
                 self.pending_count.clear();
-                self.pending_op = None;
-                self.pending_g = false;
-                self.pending_f = None;
+                self.clear_pending();
                 self.search = None;
                 self.search_hits.clear();
             }
@@ -1233,44 +1198,6 @@ impl App {
         self.pending_count.clear();
         self.buf().clamp_cursor();
         self.ensure_visible();
-    }
-
-    fn apply_operator(&mut self, op: char, motion: char) {
-        match (op, motion) {
-            ('d', 'd') => { let line = self.buf().delete_line(); self.clipboard = line; }
-            ('y', 'y') => { let line = self.buf().yank_line(); self.clipboard = line; }
-            ('d', 'w') => { let w = self.buf().delete_word(); self.clipboard = w; }
-            ('y', 'w') => {
-                let before = self.buf_ref().cursor;
-                self.buf().move_word_forward();
-                let after = self.buf_ref().cursor;
-                if before.0 == after.0 {
-                    let s: Vec<char> = self.buf_ref().current_line().chars().collect();
-                    let a = before.1.min(s.len());
-                    let b = after.1.min(s.len());
-                    self.clipboard = s[a..b].iter().collect();
-                    self.buf().cursor = before;
-                }
-            }
-            ('c', 'w') => { let _ = self.buf().delete_word(); self.mode = Mode::Insert; self.message.clear(); }
-            ('d', '$') => {
-                let line = self.buf_ref().cursor.0;
-                let col = self.buf_ref().cursor.1;
-                let s: Vec<char> = self.buf_ref().line(line).chars().collect();
-                self.clipboard = s[col.min(s.len())..].iter().collect();
-                self.buf().lines[line] = s[..col.min(s.len())].iter().collect();
-                self.buf().cursor.1 = self.buf_ref().line_chars(line).saturating_sub(1);
-            }
-            ('d', '0') => {
-                let line = self.buf_ref().cursor.0;
-                let col = self.buf_ref().cursor.1;
-                let s: Vec<char> = self.buf_ref().line(line).chars().collect();
-                self.clipboard = s[..col.min(s.len())].iter().collect();
-                self.buf().lines[line] = s[col.min(s.len())..].iter().collect();
-                self.buf().cursor.1 = 0;
-            }
-            _ => {}
-        }
     }
 
     fn handle_insert(&mut self, key: KeyEvent) {
@@ -1308,6 +1235,8 @@ impl App {
         match key.code {
             KeyCode::Esc => {
                 self.mode = Mode::Normal;
+                let at = self.buf_ref().cursor;
+                self.buf().last_insert = Some(at);
                 if self.buf_ref().cursor.1 > 0 {
                     let len = self.buf_ref().line_chars(self.buf_ref().cursor.0);
                     if self.buf_ref().cursor.1 >= len {

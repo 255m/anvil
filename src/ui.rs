@@ -6,6 +6,8 @@ use ratatui::{
     Frame,
 };
 
+use std::time::{Duration, Instant};
+
 use crate::app::{App, InputKind, Mode, Pane};
 use crate::config::{Theme, THEME_NAMES};
 use crate::finder::FinderKind;
@@ -216,6 +218,7 @@ pub fn draw(f: &mut Frame, app: &mut App) {
     if dashboard { draw_dashboard(f, app, editor_col_area); }
     if app.completion_active { draw_completion(f, app, size); }
     if app.leader { draw_whichkey(f, app, size); }
+    draw_pending_hint(f, app, size);
     if app.finder.visible { draw_finder(f, app, size); }
     if app.theme_picker_visible { draw_theme_picker(f, app, size); }
     if app.show_help { draw_help(f, app, size); }
@@ -890,6 +893,94 @@ fn draw_whichkey(f: &mut Frame, app: &mut App, size: Rect) {
         })
         .collect();
     f.render_widget(List::new(items), inner);
+}
+
+// ---------------- PENDING-KEY HINT (which-key style) ----------------
+/// How long a pending key must wait before the hint appears, so fast
+/// sequences like `dd` never flash it. Set to 0 to show it at once.
+const HINT_DELAY_MS: u64 = 300;
+
+/// Bottom-left popup listing what can follow the keys typed so far
+/// (`d`, `g`, `ci`, `Ctrl-w` ...). The rows come from `app::vimkeys`, the
+/// same grammar that executes the keys, so every listed key really works.
+fn draw_pending_hint(f: &mut Frame, app: &mut App, size: Rect) {
+    if app.pending_seq.is_empty() { app.hint_since = None; return; }
+
+    // restart the delay whenever the pending sequence changes
+    let same = matches!(&app.hint_since, Some((s, _)) if *s == app.pending_seq);
+    if !same { app.hint_since = Some((app.pending_seq.clone(), Instant::now())); }
+    let since = match &app.hint_since { Some((_, t)) => *t, None => return };
+    if since.elapsed() < Duration::from_millis(HINT_DELAY_MS) { return; }
+
+    let hint = match app.pending_hint() { Some(h) => h, None => return };
+    let theme = &app.theme;
+    let rows = &hint.rows;
+    if rows.is_empty() { return; }
+
+    let kw = rows.iter().map(|(k, _)| k.chars().count()).max().unwrap_or(1) as u16;
+    let dw = rows.iter().map(|(_, d)| d.chars().count()).max().unwrap_or(1) as u16;
+    let col_w = kw + dw + 6;              // " key ➜  description "
+    let gap = 2u16;
+
+    // as many rows as fit above the status + command lines; more columns if not
+    let max_inner_h = size.height.saturating_sub(4).max(1) as usize;
+    let max_cols = ((size.width.saturating_sub(4) + gap) / (col_w + gap)).max(1) as usize;
+    let mut per_col = rows.len().min(max_inner_h);
+    let mut cols = (rows.len() + per_col - 1) / per_col;
+    if cols > max_cols {
+        cols = max_cols;
+        per_col = ((rows.len() + cols - 1) / cols).min(max_inner_h);
+    }
+    let shown = rows.len().min(cols * per_col);
+
+    let title_w = hint.title.chars().count() as u16;
+    let inner_w = (cols as u16 * col_w + (cols as u16 - 1) * gap).max(title_w).max(11);
+    let w = inner_w + 2;
+    let h = per_col as u16 + 2;
+    if size.width < w || size.height < h + 2 { return; }
+    let popup = Rect {
+        x: size.x + 1.min(size.width - w),
+        y: size.y + size.height - h - 2,  // above the status line + command line
+        width: w,
+        height: h,
+    };
+    f.render_widget(Clear, popup);
+
+    let block = Block::default()
+        .borders(Borders::ALL)
+        .border_type(BorderType::Rounded)
+        .border_style(Style::default().fg(theme.accent))
+        .title(Span::styled(hint.title.clone(),
+            Style::default().fg(theme.accent).add_modifier(Modifier::BOLD)))
+        .title_bottom(
+            Line::from(Span::styled(" esc close ", Style::default().fg(theme.dim)))
+                .alignment(Alignment::Right))
+        .style(Style::default().bg(theme.bg));
+    let inner = block.inner(popup);
+    f.render_widget(block, popup);
+
+    for ci in 0..cols {
+        let from = ci * per_col;
+        let to = ((ci + 1) * per_col).min(shown);
+        if from >= to { break; }
+        let lines: Vec<Line> = rows[from..to].iter().map(|(k, d)| {
+            let group = d.starts_with('+');
+            Line::from(vec![
+                Span::styled(format!(" {:<w$} ", k, w = kw as usize),
+                    Style::default().fg(theme.accent).add_modifier(Modifier::BOLD)),
+                Span::styled("\u{279c}  ", Style::default().fg(theme.dim)),
+                Span::styled(d.clone(),
+                    Style::default().fg(if group { theme.tree_dir } else { theme.fg })),
+            ])
+        }).collect();
+        let area = Rect {
+            x: inner.x + ci as u16 * (col_w + gap),
+            y: inner.y,
+            width: col_w.min(inner.width.saturating_sub(ci as u16 * (col_w + gap))),
+            height: (to - from) as u16,
+        };
+        f.render_widget(Paragraph::new(lines), area);
+    }
 }
 
 // ---------------- THEME PICKER ----------------
