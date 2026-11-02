@@ -1009,29 +1009,60 @@ fn draw_finder(f: &mut Frame, app: &mut App, size: Rect) {
 
     app.last_finder_list_area = chunks[2];
 
+    // right side of the query line: matches / indexed files, plus a spinner
+    // while the background indexer is still walking folders
+    let mut status = match app.finder.kind {
+        FinderKind::File => format!("{}/{}", app.finder.len(), app.finder.indexed()),
+        FinderKind::Grep => format!("{}", app.finder.len()),
+    };
+    if app.finder.kind == FinderKind::File && app.finder.indexing() {
+        status = format!("{}  {} indexing…", status, app.finder.spinner());
+    }
+    if app.finder.kind == FinderKind::Grep && app.finder.searching() {
+        status = format!("{}  {} searching…", status, app.finder.spinner());
+    }
+    f.render_widget(
+        Paragraph::new(Line::from(Span::styled(format!("{} ", status), Style::default().fg(theme.dim))))
+            .alignment(Alignment::Right),
+        chunks[0]);
+
+    // the list scrolls: only rows offset..offset+height are drawn
+    let list_h = chunks[2].height as usize;
+    app.finder.clamp_scroll(list_h);
+    let off = app.finder.offset;
+    let sel = app.finder.selected.saturating_sub(off);
+    let hl = Style::default().bg(theme.accent).fg(theme.bg).add_modifier(Modifier::BOLD);
+
     match app.finder.kind {
         FinderKind::File => {
+            let root = app.finder.root.clone();
             let items: Vec<ListItem> = app.finder.file_results.iter()
-                .take(chunks[2].height as usize)
+                .skip(off)
+                .take(list_h)
                 .map(|p| {
-                    let s = p.to_string_lossy().to_string();
-                    let name = p.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default();
+                    let rel = p.strip_prefix(&root).unwrap_or(p);
+                    let name = rel.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default();
+                    let dir = rel.parent().map(|d| d.to_string_lossy().to_string()).filter(|d| !d.is_empty());
                     let (icon, icon_color) = file_icon(&name);
-                    ListItem::new(Line::from(vec![
+                    let mut spans = vec![
                         Span::styled(format!(" {} ", icon), Style::default().fg(icon_color)),
-                        Span::styled(s, Style::default().fg(theme.fg)),
-                    ]))
+                        Span::styled(name, Style::default().fg(theme.fg).add_modifier(Modifier::BOLD)),
+                    ];
+                    if let Some(d) = dir {
+                        spans.push(Span::styled(format!("  {}", d), Style::default().fg(theme.dim)));
+                    }
+                    ListItem::new(Line::from(spans))
                 })
                 .collect();
-            let list = List::new(items).highlight_style(
-                Style::default().bg(theme.accent).fg(theme.bg).add_modifier(Modifier::BOLD));
+            let list = List::new(items).highlight_style(hl);
             let mut state = ratatui::widgets::ListState::default();
-            state.select(Some(app.finder.selected));
+            state.select(Some(sel));
             f.render_stateful_widget(list, chunks[2], &mut state);
         }
         FinderKind::Grep => {
             let items: Vec<ListItem> = app.finder.grep_results.iter()
-                .take(chunks[2].height as usize)
+                .skip(off)
+                .take(list_h)
                 .map(|h| ListItem::new(Line::from(vec![
                     Span::styled(
                         format!("{}:{} ", h.path.display(), h.line),
@@ -1039,10 +1070,9 @@ fn draw_finder(f: &mut Frame, app: &mut App, size: Rect) {
                     Span::styled(h.text.clone(), Style::default().fg(theme.fg)),
                 ])))
                 .collect();
-            let list = List::new(items).highlight_style(
-                Style::default().bg(theme.accent).fg(theme.bg).add_modifier(Modifier::BOLD));
+            let list = List::new(items).highlight_style(hl);
             let mut state = ratatui::widgets::ListState::default();
-            state.select(Some(app.finder.selected));
+            state.select(Some(sel));
             f.render_stateful_widget(list, chunks[2], &mut state);
         }
     }

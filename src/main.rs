@@ -50,6 +50,7 @@ fn main() -> io::Result<()> {
     let mut app = App::new(initial_file);
 
     while !app.should_quit {
+        app.finder.poll(); // files found by the background indexer
         terminal.draw(|f| ui::draw(f, &mut app))?;
 
         if let Some(text) = app.take_clipboard_request() {
