@@ -267,6 +267,23 @@ Press **`Space`** in NORMAL mode to open the **leader menu** — a floating pane
 | `H` | Go home |
 | `R` | Refresh |
 
+### Finder (`Space f`, `Space F`, `Space g`)
+
+Opens instantly: files are indexed on a background thread (`.git`, `node_modules`,
+caches and Cargo `target/` are skipped), so even searching all of `$HOME` is fast.
+Matches in the file name rank above matches in the folder, and several words
+narrow the search (`src main`). Live grep also runs in the background and a new
+letter cancels the previous search.
+
+| Key | Action |
+|-----|--------|
+| `Up` `Down` / `Ctrl+n` `Ctrl+p` / `Ctrl+j` `Ctrl+k` | Move the selection |
+| `PageUp` `PageDown` / `Ctrl+u` `Ctrl+d` | Move one page |
+| `Home` `End` | First / last result |
+| Mouse wheel | Scroll 3 rows |
+| `Ctrl+w` | Delete the last word of the query |
+| `Enter` / `Esc` | Open / close |
+
 ### Global
 
 | Key | Action |

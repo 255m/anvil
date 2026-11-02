@@ -1751,11 +1751,30 @@ impl App {
     }
 
     fn handle_finder_key(&mut self, key: KeyEvent) {
+        let ctrl = key.modifiers.contains(KeyModifiers::CONTROL);
         match key.code {
             KeyCode::Esc => { self.finder.close(); }
             KeyCode::Enter => { self.finder_open_selected(); }
             KeyCode::Up => { self.finder.move_up(); }
             KeyCode::Down => { self.finder.move_down(); }
+            KeyCode::PageUp => { self.finder.page_up(); }
+            KeyCode::PageDown => { self.finder.page_down(); }
+            KeyCode::Home => { self.finder.first(); }
+            KeyCode::End => { self.finder.last(); }
+            KeyCode::Char(c) if ctrl => match c {
+                'n' | 'j' => self.finder.move_down(),
+                'p' | 'k' => self.finder.move_up(),
+                'd' => self.finder.page_down(),
+                'u' => self.finder.page_up(),
+                'w' => {
+                    // delete the last word of the query
+                    let q = self.finder.query.trim_end().to_string();
+                    let keep = q.rfind(char::is_whitespace).map_or(0, |i| i + 1);
+                    self.finder.query.truncate(keep);
+                    self.refresh_finder();
+                }
+                _ => {}
+            },
             KeyCode::Backspace => { self.finder.query.pop(); self.refresh_finder(); }
             KeyCode::Char(c) => { self.finder.query.push(c); self.refresh_finder(); }
             _ => {}
@@ -1999,15 +2018,16 @@ impl App {
 
         match m.kind {
             MouseEventKind::ScrollDown => {
-                self.finder.move_down();
+                self.finder.move_by(3);
             }
             MouseEventKind::ScrollUp => {
-                self.finder.move_up();
+                self.finder.move_by(-3);
             }
             MouseEventKind::Down(MouseButton::Left) => {
                 if in_list && total > 0 {
                     let rel_y = (m.row - list_area.y) as usize;
-                    let clicked = rel_y.min(total.saturating_sub(1));
+                    // the list may be scrolled: the row on screen is offset + rel_y
+                    let clicked = (self.finder.offset + rel_y).min(total.saturating_sub(1));
                     let now = Instant::now();
                     let is_double = matches!(
                         self.last_click,
