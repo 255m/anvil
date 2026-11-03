@@ -2,6 +2,7 @@
 
 mod app;
 mod buffer;
+mod clipboard;
 mod config;
 mod finder;
 mod syntax;
@@ -52,6 +53,7 @@ fn main() -> io::Result<()> {
     while !app.should_quit {
         terminal.draw(|f| ui::draw(f, &mut app))?;
 
+        app.sync_clipboard(); // yank/delete -> system clipboard
         if let Some(text) = app.take_clipboard_request() {
             let enc = base64_encode(text.as_bytes());
             let mut out = io::stdout();

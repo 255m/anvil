@@ -49,6 +49,10 @@ pub struct App {
     pub search_index: usize,
     pub search_hits: Vec<(usize, usize)>,
     pub clipboard: String,
+    /// (address, length) of `clipboard` when it was last sent to the system clipboard.
+    pub clip_synced: (usize, usize),
+    /// The "no clipboard tool" hint has been shown.
+    pub clip_warned: bool,
     pub registers: HashMap<char, String>,
     pub show_help: bool,
     pub last_find: Option<(char, bool)>,
@@ -196,6 +200,7 @@ impl App {
             should_quit: false, start_time: Instant::now(),
             search: None, search_index: 0, search_hits: Vec::new(),
             clipboard: String::new(), registers: HashMap::new(),
+            clip_synced: (0, 0), clip_warned: false,
             show_help: false, last_find: None, area_height: 24,
             last_tree_area: Rect::default(),
             last_editor_area: Rect::default(),
@@ -249,7 +254,43 @@ impl App {
 
     fn system_copy(&mut self, text: &str) {
         self.clipboard = text.to_string();
-        self.clipboard_request = Some(text.to_string());
+        // with the system clipboard enabled, `sync_clipboard` sends it (and
+        // falls back to OSC 52 itself); otherwise OSC 52 is all we have
+        if !self.config.clipboard_system {
+            self.clipboard_request = Some(text.to_string());
+        }
+    }
+
+    /// Send Anvil's register to the system clipboard when it changed, so a
+    /// yank or delete can be pasted in other programs. Called every frame.
+    ///
+    /// "Changed" means the register was assigned a new value. Every
+    /// assignment allocates a fresh string, so the (address, length) pair
+    /// also notices yanking the *same* text again after copying something
+    /// else elsewhere, which comparing contents could not.
+    pub fn sync_clipboard(&mut self) {
+        if !self.config.clipboard_system || self.clipboard.is_empty() { return; }
+        let id = (self.clipboard.as_ptr() as usize, self.clipboard.len());
+        if id == self.clip_synced { return; }
+        self.clip_synced = id;
+        if !crate::clipboard::write(&self.clipboard) {
+            // no clipboard tool (e.g. over SSH): ask the terminal via OSC 52
+            self.clipboard_request = Some(self.clipboard.clone());
+        }
+    }
+
+    /// The text `p` / Ctrl+v should paste: the system clipboard, or Anvil's
+    /// own register if there is no clipboard tool or it holds no text.
+    fn paste_text(&mut self) -> String {
+        if !self.config.clipboard_system { return self.clipboard.clone(); }
+        self.sync_clipboard(); // our latest yank must be on the clipboard before we read it
+        if let Some(t) = crate::clipboard::read() {
+            if !t.is_empty() { return t; }
+        } else if !crate::clipboard::available() && !self.clip_warned {
+            self.clip_warned = true;
+            self.message = "no clipboard tool (install wl-clipboard or xclip): pasting Anvil's own register".into();
+        }
+        self.clipboard.clone()
     }
 
     pub fn desired_tree_width(&self) -> u16 {
@@ -591,7 +632,7 @@ impl App {
             if let KeyCode::Esc = key.code { self.active_pane = Pane::Editor; return; }
             if key.modifiers.contains(KeyModifiers::CONTROL) {
                 if let KeyCode::Char('v') = key.code {
-                    let text = self.clipboard.clone();
+                    let text = self.paste_text();
                     if !text.is_empty() {
                         if let Some(t) = match self.active_pane {
                             Pane::SideTerm => self.side_term.as_mut(),
@@ -999,7 +1040,7 @@ impl App {
                     return;
                 }
                 KeyCode::Char('v') => {
-                    let text = self.clipboard.clone();
+                    let text = self.paste_text();
                     if !text.is_empty() { self.buf().paste(&text, true); }
                     return;
                 }
@@ -1178,11 +1219,11 @@ impl App {
             KeyCode::Char('y') => { self.pending_op = Some('y'); }
             KeyCode::Char('c') => { self.pending_op = Some('c'); }
             KeyCode::Char('p') => {
-                let text = self.clipboard.clone();
+                let text = self.paste_text();
                 if !text.is_empty() { self.buf().paste(&text, true); }
             }
             KeyCode::Char('P') => {
-                let text = self.clipboard.clone();
+                let text = self.paste_text();
                 if !text.is_empty() { self.buf().paste(&text, false); }
             }
             KeyCode::Char('u') => { self.buf().undo(); }
@@ -1279,7 +1320,7 @@ impl App {
         if ctrl {
             match key.code {
                 KeyCode::Char('v') => {
-                    let text = self.clipboard.clone();
+                    let text = self.paste_text();
                     if !text.is_empty() { self.buf().insert_str(&text); }
                     return;
                 }
@@ -1458,7 +1499,7 @@ impl App {
                     return;
                 }
                 KeyCode::Char('v') => {
-                    let text = self.clipboard.clone();
+                    let text = self.paste_text();
                     if !text.is_empty() { self.buf().paste(&text, true); }
                     self.mode = Mode::Normal;
                     return;

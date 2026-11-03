@@ -382,6 +382,9 @@ pub struct Config {
     pub term_bottom_height: u16,
     pub keybinds: Vec<KeyBind>,
     pub music_enabled: bool,
+    /// `clipboard = system` (default): `p` pastes the system clipboard and
+    /// yank/delete write to it. `clipboard = internal`: Anvil's own register only.
+    pub clipboard_system: bool,
     pub path: PathBuf,
 }
 
@@ -402,6 +405,7 @@ impl Default for Config {
             term_bottom_height: 12,
             keybinds: default_keybinds(),
             music_enabled: true,
+            clipboard_system: true,
             path: default_path(),
         }
     }
@@ -507,6 +511,7 @@ impl Config {
         out.push_str(&format!("term_bottom_height = {}\n", self.term_bottom_height));
         out.push_str(&format!("tagline            = {}\n", self.tagline));
         out.push_str(&format!("music_enabled      = {}\n", self.music_enabled));
+        out.push_str(&format!("clipboard          = {}\n", if self.clipboard_system { "system" } else { "internal" }));
         out.push('\n');
         out.push_str("[logo]\n");
         for l in &self.logo { out.push_str(l); out.push('\n'); }
@@ -561,6 +566,7 @@ impl Config {
                     "term_side_width" => if let Ok(n) = val.parse() { self.term_side_width = n; },
                     "term_bottom_height" => if let Ok(n) = val.parse() { self.term_bottom_height = n; },
                     "music_enabled" => self.music_enabled = val.eq_ignore_ascii_case("true"),
+                    "clipboard" => self.clipboard_system = !matches!(val.to_lowercase().as_str(), "internal" | "register" | "off" | "false"),
                     "tagline" => self.tagline = val,
                     "logo" => { logo_lines = vec![val]; }
                     "menu" => {
