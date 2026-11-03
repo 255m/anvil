@@ -331,6 +331,30 @@ menu = q |  | Quit
 
 Press `Space + t` and pick with the arrow keys. Enter saves; double-click selects.
 
+### Clipboard
+
+Anvil uses the system clipboard like Neovim with `clipboard=unnamedplus`:
+`p`, `P` and `Ctrl+v` paste what you copied in other programs (a browser, say),
+and `y`, `d`, `c` and visual-mode copy put the text where other programs can
+paste it.
+
+It talks to the clipboard through the usual tool for your session, so install one:
+
+| Session | Tool |
+|---------|------|
+| Wayland | `wl-clipboard` (`wl-copy` / `wl-paste`) |
+| X11 | `xclip` or `xsel` |
+| macOS | built in (`pbcopy` / `pbpaste`) |
+| Termux | `termux-api` |
+| WSL | built in (PowerShell, best effort) |
+
+Without a tool (for example over SSH), Anvil falls back to its own register and
+asks the terminal to copy via OSC 52. To turn the system clipboard off:
+
+```ini
+clipboard = internal
+```
+
 ---
 
 ## 🗂️ Project Structure
