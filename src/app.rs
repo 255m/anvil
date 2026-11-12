@@ -538,21 +538,8 @@ impl App {
 
     fn insert_pasted_text(&mut self, text: &str) {
         self.completion_active = false;
-        let clean = text.replace("\r\n", "\n").replace('\r', "\n");
-        let lines: Vec<&str> = clean.split('\n').collect();
-
-        if lines.len() == 1 {
-            if !lines[0].is_empty() { self.buf().insert_str(lines[0]); }
-        } else {
-            for (i, raw) in lines.iter().enumerate() {
-                if i == 0 {
-                    if !raw.is_empty() { self.buf().insert_str(raw); }
-                } else {
-                    self.buf().newline();
-                    if !raw.is_empty() { self.buf().insert_str(raw); }
-                }
-            }
-        }
+        // one insert (the buffer splits lines itself), so one `u` undoes it all
+        if !text.is_empty() { self.buf().insert_str(text); }
         self.buf().clamp_cursor();
         self.ensure_visible();
         self.dashboard_dismissed = true;
