@@ -272,11 +272,33 @@ impl Buffer {
         self.preferred_col = self.cursor.1;
     }
 
+    /// Insert text at the cursor as one undo step. Line breaks in `s`
+    /// (`\n`, `\r\n`, `\r`) start new lines; a line never contains a newline.
     pub fn insert_str(&mut self, s: &str) {
         self.snapshot();
-        let idx = self.byte_idx(self.cursor.0, self.cursor.1);
-        self.lines[self.cursor.0].insert_str(idx, s);
-        self.cursor.1 += s.chars().count();
+        self.insert_at_cursor(s);
+    }
+
+    /// Like `insert_str` but without an undo snapshot. The cursor ends just
+    /// after the inserted text.
+    fn insert_at_cursor(&mut self, s: &str) {
+        let clean = s.replace("\r\n", "\n").replace('\r', "\n");
+        let parts: Vec<&str> = clean.split('\n').collect();
+        let (l, c) = self.cursor;
+        let idx = self.byte_idx(l, c);
+        if parts.len() == 1 {
+            self.lines[l].insert_str(idx, parts[0]);
+            self.cursor.1 = c + parts[0].chars().count();
+        } else {
+            let tail = self.lines[l].split_off(idx);
+            self.lines[l].push_str(parts[0]);
+            let last = parts.len() - 1;
+            for (i, p) in parts[1..last].iter().enumerate() {
+                self.lines.insert(l + 1 + i, p.to_string());
+            }
+            self.lines.insert(l + last, format!("{}{}", parts[last], tail));
+            self.cursor = (l + last, parts[last].chars().count());
+        }
         self.preferred_col = self.cursor.1;
     }
 
@@ -364,23 +386,36 @@ impl Buffer {
         removed
     }
 
+    /// Vim's `p` (`after`) / `P`. Text ending in a newline is pasted as whole
+    /// lines below/above the cursor line (cursor on the first pasted line);
+    /// anything else is pasted as characters after/at the cursor. Multi-line
+    /// text becomes real lines. One undo step.
     pub fn paste(&mut self, text: &str, after: bool) {
+        let clean = text.replace("\r\n", "\n").replace('\r', "\n");
+        if clean.is_empty() { return; }
         self.snapshot();
-        if text.ends_with('\n') && text.matches('\n').count() >= 1 {
-            let lines: Vec<String> = text.trim_end_matches('\n').split('\n')
-                .map(|s| s.to_string()).collect();
-            let insert_at = if after { self.cursor.0 + 1 } else { self.cursor.0 };
-            for (i, l) in lines.into_iter().enumerate() {
-                self.lines.insert(insert_at + i, l);
+        if let Some(body) = clean.strip_suffix('\n') {
+            // exactly one trailing newline marks "whole lines"; `a\n\n` is the
+            // line `a` followed by an empty line
+            let at = if after { self.cursor.0 + 1 } else { self.cursor.0 };
+            for (i, l) in body.split('\n').enumerate() {
+                self.lines.insert(at + i, l.to_string());
             }
-            self.cursor.1 = 0;
+            self.cursor.0 = at;
+            let first = self.lines[at].chars().position(|c| !c.is_whitespace()).unwrap_or(0);
+            self.cursor.1 = first;
         } else {
-            let idx = if after {
-                let lc = self.line_chars(self.cursor.0);
-                if lc > 0 { self.byte_idx(self.cursor.0, (self.cursor.1 + 1).min(lc)) } else { 0 }
-            } else { self.byte_idx(self.cursor.0, self.cursor.1) };
-            self.lines[self.cursor.0].insert_str(idx, text);
+            let lc = self.line_chars(self.cursor.0);
+            if after && lc > 0 { self.cursor.1 = (self.cursor.1 + 1).min(lc); }
+            let start = self.cursor;
+            self.insert_at_cursor(&clean);
+            if clean.contains('\n') {
+                self.cursor = start; // multi-line: cursor at the start of the pasted text
+            } else if self.cursor.1 > 0 {
+                self.cursor.1 -= 1; // single line: on the last pasted character
+            }
         }
+        self.preferred_col = self.cursor.1;
     }
 
     pub fn indent_line(&mut self) {
@@ -514,5 +549,148 @@ impl Buffer {
     /// يجمع كل النص
     pub fn select_all(&self) -> String {
         self.lines.join("\n")
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn buf(lines: &[&str], cursor: (usize, usize)) -> Buffer {
+        let mut b = Buffer::empty();
+        b.lines = lines.iter().map(|s| s.to_string()).collect();
+        b.cursor = cursor;
+        b
+    }
+
+    /// The bug this guards against: a newline stored *inside* a line.
+    fn assert_no_embedded_newlines(b: &Buffer) {
+        for (i, l) in b.lines.iter().enumerate() {
+            assert!(!l.contains('\n') && !l.contains('\r'), "line {} contains a line break: {:?}", i, l);
+        }
+    }
+
+    #[test]
+    fn multiline_text_pasted_with_p_becomes_real_lines() {
+        let mut b = buf(&["abc"], (0, 0));
+        b.paste("X\nY", true);
+        assert_eq!(b.lines, ["aX", "Ybc"]);
+        assert_eq!(b.cursor, (0, 1)); // start of the pasted text, like Vim
+        assert_no_embedded_newlines(&b);
+    }
+
+    #[test]
+    fn multiline_text_pasted_with_capital_p() {
+        let mut b = buf(&["abc"], (0, 1));
+        b.paste("X\nY\nZ", false);
+        assert_eq!(b.lines, ["aX", "Y", "Zbc"]);
+        assert_eq!(b.cursor, (0, 1));
+        assert_no_embedded_newlines(&b);
+    }
+
+    #[test]
+    fn a_command_copied_from_a_browser_pastes_in_place() {
+        // single line, no trailing newline: characters after the cursor
+        let mut b = buf(&["hello"], (0, 0));
+        b.paste("command", true);
+        assert_eq!(b.lines, ["hcommandello"]);
+        assert_eq!(b.cursor, (0, 7)); // on the last pasted character
+    }
+
+    #[test]
+    fn paste_at_end_and_on_an_empty_line() {
+        let mut b = buf(&["ab"], (0, 1));
+        b.paste("X", true);
+        assert_eq!(b.lines, ["abX"]);
+        let mut b = buf(&[""], (0, 0));
+        b.paste("p\nq", true);
+        assert_eq!(b.lines, ["p", "q"]);
+        assert_no_embedded_newlines(&b);
+    }
+
+    #[test]
+    fn whole_lines_go_below_or_above_and_the_cursor_follows() {
+        let mut b = buf(&["a", "b"], (0, 0));
+        b.paste("x\ny\n", true);
+        assert_eq!(b.lines, ["a", "x", "y", "b"]);
+        assert_eq!(b.cursor, (1, 0)); // first pasted line
+        let mut b = buf(&["a", "b"], (1, 0));
+        b.paste("x\ny\n", false);
+        assert_eq!(b.lines, ["a", "x", "y", "b"]);
+        assert_eq!(b.cursor, (1, 0));
+    }
+
+    #[test]
+    fn whole_lines_land_on_the_first_non_blank() {
+        let mut b = buf(&["a"], (0, 0));
+        b.paste("    indented\n", true);
+        assert_eq!(b.lines, ["a", "    indented"]);
+        assert_eq!(b.cursor, (1, 4));
+    }
+
+    #[test]
+    fn a_blank_line_at_the_end_of_yanked_lines_is_kept() {
+        let mut b = buf(&["z"], (0, 0));
+        b.paste("a\n\n", true); // the line "a" followed by an empty line
+        assert_eq!(b.lines, ["z", "a", ""]);
+        let mut b = buf(&["z"], (0, 0));
+        b.paste("\n", true); // a single empty line
+        assert_eq!(b.lines, ["z", ""]);
+    }
+
+    #[test]
+    fn windows_line_endings_are_handled() {
+        let mut b = buf(&["x"], (0, 0));
+        b.paste("a\r\nb\r\nc", true);
+        assert_eq!(b.lines, ["xa", "b", "c"]);
+        assert_no_embedded_newlines(&b);
+        let mut b = buf(&["x"], (0, 0));
+        b.paste("a\r\nb\r\n", true);
+        assert_eq!(b.lines, ["x", "a", "b"]);
+    }
+
+    #[test]
+    fn insert_str_splits_lines_too() {
+        // Insert-mode Ctrl+v and bracketed paste both go through insert_str
+        let mut b = buf(&["ab"], (0, 1));
+        b.insert_str("X\nY");
+        assert_eq!(b.lines, ["aX", "Yb"]);
+        assert_eq!(b.cursor, (1, 1)); // just after the inserted text
+        assert_no_embedded_newlines(&b);
+        let mut b = buf(&["ab"], (0, 2));
+        b.insert_str("1\n2\n3");
+        assert_eq!(b.lines, ["ab1", "2", "3"]);
+        assert_eq!(b.cursor, (2, 1));
+    }
+
+    #[test]
+    fn one_undo_step_undoes_the_whole_paste() {
+        let big: String = (0..500).map(|i| format!("line {}\n", i)).collect();
+        let mut b = buf(&["start"], (0, 0));
+        b.paste(&big, true);
+        assert_eq!(b.lines.len(), 501);
+        b.undo();
+        assert_eq!(b.lines, ["start"]);
+        let mut b = buf(&["start"], (0, 5));
+        b.insert_str(big.trim_end());
+        assert_eq!(b.lines.len(), 500);
+        b.undo();
+        assert_eq!(b.lines, ["start"]);
+    }
+
+    #[test]
+    fn unicode_multiline_is_safe() {
+        let mut b = buf(&["é"], (0, 0));
+        b.paste("مرحبا\nبالعالم", true);
+        assert_eq!(b.lines, ["éمرحبا", "بالعالم"]);
+        assert_no_embedded_newlines(&b);
+    }
+
+    #[test]
+    fn empty_paste_changes_nothing() {
+        let mut b = buf(&["abc"], (0, 1));
+        b.paste("", true);
+        assert_eq!(b.lines, ["abc"]);
+        assert!(b.undo_stack.is_empty(), "an empty paste must not create an undo step");
     }
 }
